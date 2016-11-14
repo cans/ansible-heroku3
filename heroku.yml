@@ -1,0 +1,65 @@
+- hosts: localhost
+  vars:
+    settings:
+      HELLO: nurse
+      URL: http://app.example.com/
+      DATABASE_URL: postgresql://user:password@localhost:5432/db
+  vars_files:
+    - vars/credentials.yml
+  tasks:
+    - name: Get facts
+      heroku:
+        apikey: "{{heroku_api_key}}"
+        app: "{{item}}"
+      with_items:
+        - "{{heroku_existing_application_name}}"
+      ignore_errors: yes
+    - name: Create App 
+      heroku:
+        apikey: "{{heroku_api_key}}"
+        app: "{{heroku_application_name}}"
+        command: "create"
+    - name: Configure App
+      heroku:
+        apikey: "{{heroku_api_key}}"
+        app: "{{heroku_application_name}}"
+        command: "config"
+        settings: "{{settings}}"
+    - name: "Configure App (alternate syntax + uppercase option)"
+      heroku:
+        apikey: "{{heroku_api_key}}"
+        app: "{{heroku_application_name}}"
+        command: "config"
+        settings:
+          database_url: postgresql://john:password@localhost:5432/db
+        uppercase: true
+    - name: Start App
+      heroku:
+        apikey: "{{heroku_api_key}}"
+        app: "{{item}}"
+        command: "start"
+        count: 1
+        size: 'free'
+      with_items:
+        - "{{heroku_existing_application_name}}"
+    - name: Scale App
+      heroku:
+        apikey: "{{heroku_api_key}}"
+        app: "{{item}}"
+        command: "scale"
+        count: 2
+      with_items:
+        - "{{heroku_existing_application_name}}"
+      ignore_errors: yes
+    - name: Stop App
+      heroku:
+        apikey: "{{heroku_api_key}}"
+        app: "{{item}}"
+        command: "stop"
+      with_items:
+        - "{{heroku_existing_application_name}}"
+    - name: Remove App
+      heroku:
+        apikey: "{{heroku_api_key}}"
+        app: "{{heroku_application_name}}"
+        command: "delete"
