@@ -210,6 +210,16 @@ def _apps(module, client, app=None, **kwargs):
     pass
 
 
+def _app(module, client, app=None, state=None, **kwargs):
+    action = {'absent': _delete,
+              'present': _create,
+              'restarted': _restart,
+              'started': _start,
+              'stopped': _stop,
+              }
+    pass  # TODO
+
+
 def _config(module, client, app=None, settings=None, uppercase=True, **kwargs):
     """
     """
