@@ -53,13 +53,16 @@ TODO
 Known limitations
 =================
 
-Heroku's documentation suggest one can have mixed type of Dynos for a single
+Heroku's documentation suggests that one can have mixed type of Dynos for a single
 application. Never used that and not clear to me how to implement that with
 the API (https://devcenter.heroku.com/articles/dyno-types#default-scaling-limits)
 
 
 Credits
 =======
+
+Credits should go first to _martizzz_ for his work on the python heroku3
+module without which this Ansible module would not function.
 
 There is a `similar module <https://github.com/s0enke/ansible-heroku>`_
 available, but the project has not seen much work and uses a deprecated

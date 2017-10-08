@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8; -*-
 # Copyright © 2017, Nicolas CANIART
-# GNU General Public License v2.0 (see COPYING or https://www.gnu.org/licenses/gpl-2.0.txt)
+# GNU General Public License v2.0 (see COPYING or https://www.gnu.org/licenses/gpl-2.0.txt)  # NOQA
 from __future__ import unicode_literals, print_function
 import copy
 import json
@@ -10,16 +10,16 @@ import sys
 from ansible.module_utils.basic import AnsibleModule
 # WANT_JSON
 try:
-   from requests.exceptions import HTTPError
-   HAS_REQUESTS = True
+    from requests.exceptions import HTTPError
+    HAS_REQUESTS = True
 except ImportError:
-   HAS_REQUESTS = False
+    HAS_REQUESTS = False
 try:
-   import heroku3
-   from heroku3.models import BaseResource
-   HAS_HEROKU3 = True
+    import heroku3
+    from heroku3.models import BaseResource
+    HAS_HEROKU3 = True
 except ImportError:
-   HAS_HEROKU3 = False
+    HAS_HEROKU3 = False
 
 
 __all__ = ['main']
@@ -56,8 +56,8 @@ _HEROKU_STACKS = ('cedar-14',
                   'heroku-16',
                   )
 _ARGS_SPEC = {'api_key': {'required': True,
-                         'no_log': True,
-                         },
+                          'no_log': True,
+                          },
               'app': {'required': True,
                       # 'type': 'list',
                       },
@@ -71,9 +71,10 @@ _ARGS_SPEC = {'api_key': {'required': True,
                             },
               'region': {'default': 'us',
                          'choices': _HEROKU_REGIONS,
-                         }, 
+                         },
               'settings': {'default': {},
-                           'no_log': True,  # 'cause user settings may contain sensitive data
+                           # 'cause user settings may contain sensitive data
+                           'no_log': True,
                            'required': False,
                            'type': 'dict',
                            },
@@ -112,7 +113,7 @@ options:
     required: True
     type: string
   app:
-    description: Name of your Heroku application which state change 
+    description: Name of your Heroku application which state change
     required: True
     type: string
   count:
@@ -178,7 +179,7 @@ options:
 
 requirements:
     - heroku3 Python module
-'''.format(states='\n      - '.join(_STATES),
+'''.format(states='\n      - '.join(_STATES),  # NOQA
            regions='\n      - '.join(_HEROKU_REGIONS),
            )
 
@@ -197,7 +198,7 @@ EXAMPLES = '''
     state: "present"
     region: "us"
     settings:
-      variable: "value" 
+      variable: "value"
       path: "/to/some/place"
     uppercase: true
     formation:
@@ -222,28 +223,62 @@ Unabled to retrieve applications data from Heroku
 (check your credentials or Heroku's status)."""
 
 
-def _passive(verb):
-    if verb[-1] in ['p']:
-       return "{}{}ed".format(verb, verb[-1])
-    elif verb[-1] in ['t']:
-       return '{}ed'.format(verb)
-    return '{}d'.format(verb)
-
- 
-def _check_app(module, client, app):
+def _get_app(module, client, app):
     try:
         apps = client.apps()
     except HTTPError:
         module.fail_json(msg=_UNABLE_TO_RETRIEVE_APP_DATA)
-    
+
     if app not in apps:
         return None
     else:
         return apps.get(app)
 
 
+def _check_prerequisites(module,
+                         count=None,
+                         formation=None,
+                         state=None,
+                         size=None,
+                         **kwargs):
+    if state in ('stopped', 'absent'):
+        return  # We don't care about 'count', 'formation' and 'size'
 
-def _configure(module, client, hk_app, settings=None, uppercase=True, **kwargs):
+    if((not formation and (size is None or count is None)) or
+       (formation and size is not None and count is not None)):
+        module.fail_json(msg="You must specify either the 'formation' or both"
+                         " the 'count' and 'size' options.")
+
+    total_dynos = 0
+    safe_dyno_types = {dyno_type.replace('-', ''): dyno_type
+                       for dyno_type in _DYNO_SIZES
+                       }
+    for dyno_type, count in copy.copy(formation).items():
+        actual_dyno_type = safe_dyno_types.get(dyno_type)
+        if actual_dyno_type is None or count < 0:
+            module.fail_json(msg=("Invalid 'formation' value: '{dyno_type}: "
+                                  "{count}'"
+                                  .format(dyno_type=dyno_type, count=count)))
+        else:
+            formation[actual_dyno_type] = count
+            del formation[dyno_type]
+        total_dynos += count
+
+    if not formation:
+        formation.update({size: count, })
+        total_dynos += count
+
+    if state != 'present' and total_dynos <= 0:
+        module.fail_json(msg="You allocated no dynos to your application."
+                         " It cannot be running without dynos."
+                         " Check you formation or size and count options."
+                         )
+    # Parameters 'count', 'region', 'size', 'stack', 'state' already checked by
+    # the module.
+    # Cannot check 'settings' it is user data.
+
+
+def _configure(module, client, hk_app, settings=None, uppercase=True):
     """Applies settings to the given Heroku application.
 
     Args:
@@ -264,21 +299,21 @@ def _configure(module, client, hk_app, settings=None, uppercase=True, **kwargs):
         current_settings = current_settings.data
     except Exception as e:  # Better handle error
         module.fail_json(msg=("Failed to retrieve `{app}' current configuration."
-                              .format(app=kwargs['app'])
+                              .format(app=hk_app.name)
                               )
                          )
 
     changed = False
     actual_settings = {}
     for variable, new_value in settings.iteritems():
-         if uppercase is True:
-             actual_variable = variable.upper()
-         else:
-             actual_variable = variable
+        if uppercase is True:
+            actual_variable = variable.upper()
+        else:
+            actual_variable = variable
 
-         actual_settings[actual_variable] = str(new_value)
-         old_value = current_settings.get(variable, unknown)
-         changed |= old_value is unknown or str(new_value) != old_value
+        actual_settings[actual_variable] = str(new_value)
+        old_value = current_settings.get(variable, unknown)
+        changed |= old_value is unknown or str(new_value) != old_value
 
     hk_app.update_config(actual_settings)
 
@@ -329,7 +364,7 @@ def _convert_facts(fact, exclude=None):
     result = {}
     exclude = exclude or ['app', 'info', 'order_by', ]
     attributes = dir(fact)
-    for attr in attributes: 
+    for attr in attributes:
         if attr.startswith('_') or attr in exclude:
             continue
 
@@ -351,10 +386,10 @@ def _facts(module, client, app=None, **kwargs):
 
 
 def _get_facts(hk_app):
-    results = dict() 
+    results = dict()
     return {'heroku_app': {'name': app,
                            'id': hk_app.id,
-                           'raw': data, 
+                           'raw': data,
                            },
             }
 
@@ -367,7 +402,7 @@ def _present(module, client, hk_app, **kwargs):
 
 
 def _restarted(module, client, hk_app, **kwargs):
-    import ipdb ; ipdb.set_trace()
+    import ipdb; ipdb.set_trace()
     if hk_app is None:
         return _started(module, client, hk_app, **kwargs)
 
@@ -381,7 +416,7 @@ def _restarted(module, client, hk_app, **kwargs):
                                                      ),
                                 )
 
-    try: 
+    try:
         hk_app.restart()
     except HTTPError:
         module.fail_json(msg="Failed to restart application '{app}'".format(hk_app.name))
@@ -441,70 +476,48 @@ def _scale(module, client, hk_app, formation=None, **kwargs):
             return hk_app, {'changed': True, }
 
         except HTTPError as e:
-            module.fail_json(msg="Could not update app `{app}' formation: {error}"
-                             .format(action=action, app=hk_app.name, error=e))
+            module.fail_json(msg="Could not update app `{app}' formation: "
+                             "{error}".format(action=action,
+                                              app=hk_app.name,
+                                              error=e,
+                                              )
+                             )
     return hk_app, {'changed': False, }
-  
+
 
 def _started(module, client, hk_app, formation=None, **kwargs):
     import ipdb ; ipdb.set_trace()
     if hk_app is None:
         hk_app, changed = _present(module, client, hk_app, **kwargs)
     # Better configure the application before starting it
-    hk_app, changed = _configure(module,
-                                 client,
-                                 hk_app,
-                                 settings=kwargs['settings'],
-                                 uppercase=kwargs['uppercase'],
-                                 )
+    hk_app, config_changed = _configure(module,
+                                        client,
+                                        hk_app,
+                                        settings=kwargs['settings'],
+                                        uppercase=kwargs['uppercase'],
+                                        )
 
-    _scale(module, client, hk_app, formation=formation, **kwargs)
+    hk_app, scale_changed =  _scale(module,
+                                    client,
+                                    hk_app,
+                                    formation=formation
+                                    )
+
+
 
 
 def _stopped(module, client, hk_app, **kwargs):
     print(kwargs, file=sys.stderr)
     if hk_app is None:
         hk_app, present_changed = _present(module, client, hk_app)
+
     formation_override = dict(izip_longest(_DYNO_SIZES, [0], fillvalue=0))
-    hk_app, scale_changed = _scale(module, client, hk_app, formation=formation_override)
+    hk_app, scale_changed = _scale(module,
+                                   client,
+                                   hk_app,
+                                   formation=formation_override)
 
     return hk_app, scale_changed or present_changed
-
-
-def _check_prerequisites(module, count=None, formation=None, state=None, size=None, **kwargs):
-    import ipdb; ipdb.set_trace()
-    if state in ('stopped', 'absent'):
-        return  # We don't care about 'count', 'formation' and 'size'
-
-    if ((not formation and (size is None or count is None)) or
-        (formation and size is not None and count is not None)):
-        module.fail_json(msg="You must specify either the 'formation' or both the 'count' and 'size' options.")
-
-    total_dynos = 0
-    safe_dyno_types = {dyno_type.replace('-', ''): dyno_type for dyno_type in _DYNO_SIZES}
-    for dyno_type, count in copy.copy(formation).items():
-        actual_dyno_type = safe_dyno_types.get(dyno_type)
-        if actual_dyno_type is None  or count < 0:
-            module.fail_json(msg=("Invalid 'formation' value: '{dyno_type}: {count}'"
-                                  .format(dyno_type=dyno_type, count=count)))
-        else:
-            formation[actual_dyno_type] = count
-            del formation[dyno_type]
-        total_dynos += count
-
-    if not formation:
-        formation.update({size: count, })
-        total_dynos += count
-
-    if state != 'present' and total_dynos <= 0:
-        module.fail_json(msg=("You allocated no dynos to your application."
-                              " It cannot be running without dynos."
-                              " Check you formation or size and count options."
-                              )
-                         )
-    # Parameters 'count', 'region', 'size', 'stack', 'state' already checked by the
-    # module.
-    # Cannot check 'settings' it is user data.
 
 
 def main():
@@ -515,14 +528,16 @@ def main():
                        'started': _started,
                        'stopped': _stopped,
                        }
-                       
+
     module = AnsibleModule(argument_spec=_ARGS_SPEC,
                            supports_check_mode=False,
                            )
     if not HAS_HEROKU3:
-        module.fail_json(msg="Heroku3 is required for this module. Please install heroku3 and try again.".format(app))
+        module.fail_json(msg="Heroku3 is required for this module. "
+                         "Please install heroku3 and try again.")
     if not HAS_REQUESTS:
-        module.fail_json(msg="Requests is required for this module. Please install requests and try again.".format(app))
+        module.fail_json(msg="Requests is required for this module. "
+                         "Please install requests and try again.")
 
     params = module.params
     _check_prerequisites(module, **module.params)
@@ -530,7 +545,7 @@ def main():
     del params['api_key']  # So it does not appear in logs.
 
     command = _STATE_HANDLERS[params['state']]
-    hk_app = _check_app(module, client, params['app'])
+    hk_app = _get_app(module, client, params['app'])
     hk_app, changed = command(module,
                               client,
                               hk_app,
@@ -539,11 +554,14 @@ def main():
                                  if k not in ['state', ]
                                  }
                               )
-    module.exit_json()
+    module.exit_json(msg=("Application {app} successfuly {state}."
+                          .format(app=hk_app.name, state=params['state'])
+                          )
+                     )
 
 
 if __name__ == '__main__':
     main()
 
 
-# vim: syntax=python:sws=4:sw=4:et:
+# vim: et:sw=4:syntax=python:ts=4:
